@@ -43,6 +43,7 @@ func main() {
 	tmp3, err := Ping(tmp2, "8.8.8.8", time.Second*3)
 	util.Er(err)
 
+	fmt.Printf("Reply Datagram: %X\n", tmp3)
 	util.WalkByteSlice(tmp3)
 
 	fmt.Println(tmp2)
