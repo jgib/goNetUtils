@@ -44,7 +44,7 @@ func main() {
 	util.Er(err)
 
 	fmt.Printf("Reply Datagram: %X\n", tmp3)
-	util.WalkByteSlice(tmp3)
+	fmt.Println(util.WalkByteSlice(tmp3))
 
 	fmt.Println(tmp2)
 
