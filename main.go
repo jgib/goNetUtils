@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"net"
+	"regexp"
+	"time"
 
 	util "github.com/jgib/utils"
 )
@@ -31,10 +34,16 @@ func main() {
 
 	var icmpTmp IcmpDatagram
 	icmpTmp.icmpType = 8
-	icmpTmp.code = 33
+	icmpTmp.code = 0
+	icmpTmp.identifier = 1
+	icmpTmp.sequenceNumber = 1
 
 	tmp2, err := IcmpGenerateDatagram(icmpTmp)
 	util.Er(err)
+	tmp3, err := Ping(tmp2, "8.8.8.8", time.Second*3)
+	util.Er(err)
+
+	util.WalkByteSlice(tmp3)
 
 	fmt.Println(tmp2)
 
@@ -64,6 +73,38 @@ func InetCksum(msg []byte) [2]byte {
 	cksum[1] = cksum[1] ^ 0xFF
 
 	return cksum
+}
+
+func Ping(input []byte, dest string, timeout time.Duration) ([]byte, error) {
+	pattern := regexp.MustCompile(`^\d+\.\d+\.\d+\.\d+$`)
+	if !pattern.MatchString(dest) {
+		return nil, fmt.Errorf("invalid destination IPv4 address [%s]", dest)
+	}
+
+	conn, err := net.Dial("ip4:1", dest)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	err = conn.SetDeadline(time.Now().Add(timeout))
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = conn.Write(input)
+	if err != nil {
+		return nil, err
+	}
+
+	replyDatagram := make([]byte, 65507)
+
+	replySize, err := conn.Read(replyDatagram)
+	if err != nil {
+		return nil, err
+	}
+
+	return replyDatagram[:replySize], nil
 }
 
 func IcmpGenerateDatagram(input IcmpDatagram) ([]byte, error) {
