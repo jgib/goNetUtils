@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"strings"
 	"time"
 
 	util "github.com/jgib/utils"
@@ -23,6 +24,37 @@ type IcmpDatagram struct {
 	code                   byte
 	internetHeader         []byte
 	data                   []byte
+}
+
+type DnsHeader struct {
+	id      uint16 // assigne by program generating query
+	qr      byte   // 1 bit; Query/Response; 0 = query, 1 = response
+	opcode  byte   // 4 bit; 0 = QUERY, 1 = IQUERY, 2 = STATUS, 3-15 = future use
+	aa      byte   // 1 bit; Authoritative Answer
+	tc      byte   // 1 bit; Truncation
+	rd      byte   // 1 bit; Recursion Desired
+	ra      byte   // 1 bit; Recursion Available
+	z       byte   // 3 bit; future use; must be 0
+	rcode   byte   //4 bit; Response Code; 0 = No error, 1 = Format error, 2 = Server failure, 3 = Name error, 4 = Not implemented, 5 = Refused, 6-15 = future use
+	qdcount uint16 // Number of entries in question section
+	ancount uint16 // Number of resource records in answer section
+	nscount uint16 // Number of server resource records in the authority records section
+	arcount uint16 // Number of resource records in additional records section
+}
+
+type DnsQuestion struct {
+	qname  []byte // domain name represented as a sequence of labels, where each label consists of a length octet followed by that number of octets, terminates with the zero length octet for the null label of the root
+	qtype  uint16 // type of query
+	qclass uint16 // class of the query
+}
+
+type DnsResourceRecord struct {
+	name     []byte
+	rrType   uint16
+	class    uint16
+	TTL      uint32
+	rdLength uint16
+	rData    []byte
 }
 
 func main() {
@@ -154,4 +186,62 @@ func IcmpGenerateDatagram(input IcmpDatagram) ([]byte, error) {
 	datagram[3] = cksum[1]
 
 	return datagram, nil
+}
+
+func DnsGenerateDatagram(header DnsHeader, questions []DnsQuestion, resourceRecords []DnsResourceRecord) ([]byte, error) {
+	var datagram []byte
+
+	if header.z != 0 {
+		return nil, fmt.Errorf("invalid header value for z [%d], must be zero", header.z)
+	}
+
+	datagram = append(datagram, byte(header.id>>8), byte(header.id))
+	datagram = append(datagram, byte(header.qr&1))
+	datagram = append(datagram, byte(header.opcode&15))
+	datagram = append(datagram, byte(header.aa&1))
+	datagram = append(datagram, byte(header.tc&1))
+	datagram = append(datagram, byte(header.rd&1))
+	datagram = append(datagram, byte(header.ra&1))
+	datagram = append(datagram, byte(header.z&7))
+	datagram = append(datagram, byte(header.rcode&15))
+	datagram = append(datagram, byte(header.qdcount>>8))
+	datagram = append(datagram, byte(header.qdcount))
+	datagram = append(datagram, byte(header.ancount>>8))
+	datagram = append(datagram, byte(header.ancount))
+	datagram = append(datagram, byte(header.nscount>>8))
+	datagram = append(datagram, byte(header.nscount))
+	datagram = append(datagram, byte(header.arcount>>8))
+	datagram = append(datagram, byte(header.arcount))
+
+	for i := 0; i < len(questions); i++ {
+		datagram = append(datagram, questions[i].qname...)
+		datagram = append(datagram, byte(questions[i].qtype>>8))
+		datagram = append(datagram, byte(questions[i].qtype))
+		datagram = append(datagram, byte(questions[i].qclass>>8))
+		datagram = append(datagram, byte(questions[i].qclass))
+	}
+
+	for i := 0; i < len(resourceRecords); i++ {
+		datagram = append(datagram, resourceRecords[i].name...)
+		datagram = append(datagram, byte(resourceRecords[i].rrType>>8))
+		datagram = append(datagram, byte(resourceRecords[i].rrType))
+		datagram = append(datagram, byte(resourceRecords[i].class>>8))
+		datagram = append(datagram, byte(resourceRecords[i].class))
+		datagram = append(datagram, byte(resourceRecords[i].TTL>>24))
+		datagram = append(datagram, byte(resourceRecords[i].TTL>>16))
+		datagram = append(datagram, byte(resourceRecords[i].TTL>>8))
+		datagram = append(datagram, byte(resourceRecords[i].TTL))
+		datagram = append(datagram, byte(resourceRecords[i].rdLength>>8))
+		datagram = append(datagram, byte(resourceRecords[i].rdLength))
+		datagram = append(datagram, resourceRecords[i].rData...)
+	}
+
+	return datagram, nil
+}
+
+func DnsQuery(datagram []byte, dest string, port uint16, proto string) ([]byte, error) {
+	if strings.ToUpper(proto) != "UDP" && strings.ToUpper(proto) != "TCP" {
+		return nil, fmt.Errorf("invalid protocol specified [%s]", proto)
+	}
+
 }
