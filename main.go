@@ -80,6 +80,39 @@ func main() {
 
 	fmt.Println(tmp2)
 
+	fmt.Println("Test DNS")
+
+	var tmpHeader DnsHeader
+	var tmpQuestion []DnsQuestion
+
+	tmpHeader.id = 42069
+	tmpHeader.opcode = 0
+	tmpHeader.tc = 0
+	tmpHeader.rd = 1
+	tmpHeader.z = 0
+	tmpHeader.rcode = 0
+	tmpHeader.qdcount = 1
+	tmpHeader.ancount = 0
+	tmpHeader.nscount = 0
+	tmpHeader.arcount = 0
+
+	var tmpQ DnsQuestion
+	tmpQ.qname = append(tmpQ.qname, 5)
+	tmpQ.qname = append(tmpQ.qname, []byte("yahoo")...)
+	tmpQ.qname = append(tmpQ.qname, 3)
+	tmpQ.qname = append(tmpQ.qname, []byte("com")...)
+	tmpQ.qname = append(tmpQ.qname, 0)
+	tmpQuestion = append(tmpQuestion, tmpQ)
+
+	tmp4, err := DnsGenerateDatagram(tmpHeader, tmpQuestion, nil)
+	util.Er(err)
+	fmt.Println(util.WalkByteSlice(tmp4))
+
+	fmt.Println("DNS Reply")
+	tmp5, err := DnsQuery(tmp4, "8.8.8.8", 53, "UDP")
+	util.Er(err)
+	fmt.Println(util.WalkByteSlice(tmp5))
+
 	util.Er(fmt.Errorf("ERROR TEST"))
 
 }
@@ -108,7 +141,7 @@ func InetCksum(msg []byte) [2]byte {
 	return cksum
 }
 
-func Ping(input []byte, dest string, timeout time.Duration) ([]byte, error) {
+func Ping(datagram []byte, dest string, timeout time.Duration) ([]byte, error) {
 	pattern := regexp.MustCompile(`^\d+\.\d+\.\d+\.\d+$`)
 	if !pattern.MatchString(dest) {
 		return nil, fmt.Errorf("invalid destination IPv4 address [%s]", dest)
@@ -125,7 +158,7 @@ func Ping(input []byte, dest string, timeout time.Duration) ([]byte, error) {
 		return nil, err
 	}
 
-	_, err = conn.Write(input)
+	_, err = conn.Write(datagram)
 	if err != nil {
 		return nil, err
 	}
@@ -244,4 +277,31 @@ func DnsQuery(datagram []byte, dest string, port uint16, proto string) ([]byte, 
 		return nil, fmt.Errorf("invalid protocol specified [%s]", proto)
 	}
 
+	if strings.ToUpper(proto) == "UDP" {
+		addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%d", dest, port))
+		if err != nil {
+			return nil, err
+		}
+		conn, err := net.DialUDP("udp4", nil, addr)
+		if err != nil {
+			return nil, err
+		}
+		defer conn.Close()
+
+		_, err = conn.Write(datagram)
+		if err != nil {
+			return nil, err
+		}
+
+		replyDatagram := make([]byte, 65507)
+
+		replySize, err := conn.Read(replyDatagram)
+		if err != nil {
+			return nil, err
+		}
+
+		return replyDatagram[:replySize], nil
+	}
+
+	return nil, nil
 }
