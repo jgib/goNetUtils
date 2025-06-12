@@ -73,6 +73,95 @@ type DhcpDatagram struct {
 	sname   [64]byte  // Optional server host name; null terminated string
 	file    [128]byte // Boot file name, null terminated string
 	options []byte    // Optional parameters field
+
+	/*
+	   First 4 octets of the options field contain the decimal values [99][130][83][99].  This is the same
+	   magic cookie as defined in RFC 1497.
+
+	   OPTION  DESCRIPTION
+	   0       Pad [0]
+	   1       Subnet Mask                     [1][len(4)][m1][m2][m3][m4]
+	   2       Time Offset                     [2][len(4)][n1][n2][n3][n4]
+	   3       Router Option                   [3][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   4       Time Server Option              [4][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   5       Name Server Option              [5][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   6       Domain Name Server Option       [6][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   7       Log Server Option               [7][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   8       Cookie Server Option            [8][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   9       LPR Server Option               [9][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   10      Impress Server Option           [10][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   11      Resource Location Server Option [11][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   12      Host Name Option                [12][len(n)][h1][h2][h3][h4][h5][h6][...]
+	   13      Boot File Size Option           [13][len(2)][l1][l2]
+	   14      Merit Dumpt File                [14][len(n)][n1][n2][n3][n4][...]
+	   15      Domain Name                     [15][len(n)][d1][d2][d3][d4][...]
+	   16      Swap Server                     [16][len(4)][a1][a2][a3][a4]
+	   17      Root Path                       [17][len(n)][n1][n2][n3][n4][...]
+	   18      Extensions Path                 [18][len(n)][n1][n2][n3][n4][...]
+	   19      IP Forwarding Option            [19][len(1)][0|1]
+	   20      Non-Local Source Routing Option [20][len(1)][0|1]
+	   21      Policy Filter Option            [21][len(n)[a1][a2][a3][a4][m1][m2][m3][m4][a1][a2][a3][a4][m1][m2][m3][m4][...]
+	   22      Max Datagram Reassembly Size    [22][len(2)][s1][s2]
+	   23      Default IP Time-to-live         [23][len(1)][ttl]
+	   24      Path MTU Aging Timout Option    [24][len(4)][t1][t2][t3][t4]
+	   25      Path MTU Plateau Table Option   [25][len(n)][s1][s2][s1][s2][...]
+	   26      Interface MTU Option            [26][lne(2)][m1][m2]
+	   27      All Subnets are Local Option    [27][len(1)][0|1]
+	   28      Broadcast Address Option        [28][len(4)][b1][b2][b3][b4]
+	   29      Perform Mask Discovery Option   [29][len(1)][0|1]
+	   30      Mask Supplier Option            [30][len(1)][0|1]
+	   31      Perform Router Discovery Option [31][len(1)][0|1]
+	   32      Router Solicitation Addr Option [32][len(4)][a1][a2][a3][a4]
+	   33      Static Route Option             [33][len(n)][d1][d2][d3][d4][r1][r2][r3][r4][d1][d2][d3][d4][r1][r2][r3][r4][...]
+	   34      Trailer Encapsulation Option    [34][len(1)][0|1]
+	   35      ARP Cache Timeout Option        [35][len(4)][t1][t2][t3][t4]
+	   36      Ethernet Encapsulation Option   [36][len(1)][0|1]
+	   37      TCP Default TTL Option          [37][len(1)][0|1]
+	   38      TCP Keepalive Interval Option   [38][len(4)][t1][t2][t3][t4]
+	   39      TCP Keepalive Garbage Option    [39][len(1)][0|1]
+	   40      Network Info Service Domain Opt [40][len(n)][n1][n2][n3][n4][...]
+	   41      Network Info Servers Option     [41][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   42      Network Time Proto Servers Opt  [42][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   43      Vendor Specific Information     [43][len(n)][i1][i2][...]
+	   44      NetBIOS TCP/IP Name Server Opt  [44][len(n)][a1][a2][a3][a4][b1][b2][b3][b4][...]
+	   45      NetBIOS TCP/IP Datagram Dist Opt[45][len(n)][a1][a2][a3][a4][b1][b2][b3][b4][...]
+	   46      NetBIOS TCP/IP Node Type Option [46][len(1)][node type]
+	                                               VALUE   NODE TYPE
+	                                               -----   ---------
+	                                               0x1     B-node
+	                                               0x2     P-node
+	                                               0x4     M-node
+	                                               0x8     H-node
+	   47      NetBIOS TCP/IP Scope Option     [47][len(n)][s1][s2][s3][s4][...]
+	   48      X Window System Font Server Opt [48][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   49      X Window System Display Mgr Opt [49][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   50      Requested IP Address            [50][len(4)][a1][a2][a3][a4]
+	   51      IP Address Lease Time           [51][len(4)][t1][t2][t3][t4]
+	   52      Option Overload                 [52][len(1)][1|2|3]
+	                                               VALUE   MEANING
+	                                               -----   -------
+	                                               1       the "file" field is used to hold options
+	                                               2       the "sname" field is used to hold options
+	                                               3       both fields are used to hold options
+	   53      DHCP Message Type               [53][len(1)][1-7]
+	                                               VALUE   MESSAGE TYPE
+	                                               -----   ------------
+	                                               1       DHCPDISCOVER
+	                                               2       DHCPOFFER
+	                                               3       DHCPREQUEST
+	                                               4       DHCPDECLINE
+	                                               5       DHCPACK
+	                                               6       DHCPNAK
+	                                               7       DHCPRELEASE
+	   54      Server Identifier               [54][len(4)][a1][a2][a3][a4]
+	   55      Parameter Request List          [55][len(n)][c1][c2][...]
+	   56      Message                         [56][len(n)][c1][c2][...]
+	   57      Maximum DHCP Message Size       [57][len(2)[l1][l2]
+	   58      Renewal (T1) Time Value         [58][len(4)][t1][t2][t3][t4]
+	   59      Rebinding (T2) Time Value       [59][len(4)][t1][t2][t3][t4]
+	   60      Class-identifier                [
+	   255     End                             [255]
+	*/
 }
 
 type DhcpOption struct {
@@ -113,23 +202,15 @@ func main() {
 	tmpHeader.id = 42069
 	tmpHeader.opcode = 0
 	tmpHeader.tc = 0
-	tmpHeader.rd = 1
+	tmpHeader.rd = 0
 	tmpHeader.z = 0
 	tmpHeader.rcode = 0
-	tmpHeader.qdcount = 3
+	tmpHeader.qdcount = 1
 	tmpHeader.ancount = 0
 	tmpHeader.nscount = 0
 	tmpHeader.arcount = 0
 
 	var tmpQ DnsQuestion
-	tmpQ.qname = append(tmpQ.qname, 5)
-	tmpQ.qname = append(tmpQ.qname, []byte("yahoo")...)
-	tmpQ.qname = append(tmpQ.qname, 3)
-	tmpQ.qname = append(tmpQ.qname, []byte("com")...)
-	tmpQ.qname = append(tmpQ.qname, 6)
-	tmpQ.qname = append(tmpQ.qname, []byte("google")...)
-	tmpQ.qname = append(tmpQ.qname, 3)
-	tmpQ.qname = append(tmpQ.qname, []byte("com")...)
 	tmpQ.qname = append(tmpQ.qname, 9)
 	tmpQ.qname = append(tmpQ.qname, []byte("microsoft")...)
 	tmpQ.qname = append(tmpQ.qname, 3)
