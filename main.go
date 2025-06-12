@@ -91,7 +91,7 @@ func main() {
 	tmpHeader.rd = 1
 	tmpHeader.z = 0
 	tmpHeader.rcode = 0
-	tmpHeader.qdcount = 1
+	tmpHeader.qdcount = 3
 	tmpHeader.ancount = 0
 	tmpHeader.nscount = 0
 	tmpHeader.arcount = 0
@@ -99,6 +99,14 @@ func main() {
 	var tmpQ DnsQuestion
 	tmpQ.qname = append(tmpQ.qname, 5)
 	tmpQ.qname = append(tmpQ.qname, []byte("yahoo")...)
+	tmpQ.qname = append(tmpQ.qname, 3)
+	tmpQ.qname = append(tmpQ.qname, []byte("com")...)
+	tmpQ.qname = append(tmpQ.qname, 6)
+	tmpQ.qname = append(tmpQ.qname, []byte("google")...)
+	tmpQ.qname = append(tmpQ.qname, 3)
+	tmpQ.qname = append(tmpQ.qname, []byte("com")...)
+	tmpQ.qname = append(tmpQ.qname, 9)
+	tmpQ.qname = append(tmpQ.qname, []byte("microsoft")...)
 	tmpQ.qname = append(tmpQ.qname, 3)
 	tmpQ.qname = append(tmpQ.qname, []byte("com")...)
 	tmpQ.qname = append(tmpQ.qname, 0)
