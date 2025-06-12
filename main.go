@@ -57,6 +57,31 @@ type DnsResourceRecord struct {
 	rData    []byte
 }
 
+type DhcpDatagram struct {
+	op      byte      // 1=BOOTREQUEST, 2=BOOTREPLY
+	htype   byte      // HW ADDR TYPE; 1=Ethernet (10Mb), etc, ... see "assigned Numbers" RFC
+	hlen    byte      // 6 for 10mb ethernet
+	hops    byte      // client sets to zero
+	xid     uint32    // random number choosen by client
+	secs    uint16    // seconds since client began address acquisition or renawal process
+	flags   uint16    // flags
+	ciaddr  uint32    // Client IP address; only filled if client is in BOUND, RENEW, or REBINDING state
+	yiaddr  uint32    // 'your' (client) IP address
+	siaddr  uint32    // IP address of next server (bootstrap)
+	giaddr  uint32    // Relay agent IP address
+	chaddr  [16]byte  // Client hardware address
+	sname   [64]byte  // Optional server host name; null terminated string
+	file    [128]byte // Boot file name, null terminated string
+	options []byte    // Optional parameters field
+}
+
+type DhcpOption struct {
+	pad        bool    // 0, used to align fields to word boundaries
+	end        byte    // 255
+	subnetMask [6]byte // 1, 4, m1, m2, m3, m4
+	timeOffset [6]byte // 2, 4, n1, n2, n3, n4
+}
+
 func main() {
 	fmt.Println("Test")
 	util.Debug("Test2", true)
