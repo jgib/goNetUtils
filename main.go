@@ -159,7 +159,19 @@ type DhcpDatagram struct {
 	   57      Maximum DHCP Message Size       [57][len(2)[l1][l2]
 	   58      Renewal (T1) Time Value         [58][len(4)][t1][t2][t3][t4]
 	   59      Rebinding (T2) Time Value       [59][len(4)][t1][t2][t3][t4]
-	   60      Class-identifier                [
+	   60      Class-identifier                [60][len(n)][i1][i2][...]
+	   61      Client-identifier               [61][len(n)][t1][i1][i2][...]
+	   64      NIS+ Domain Option              [64][len(n)][n1][n2][n3][n4][...]
+	   65      NIS+ Servers Option             [65][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   68      Mobile IP Home Agent Option     [68][len(n)][a1][a2][a3][a4][...]
+	   69      SMTP Server Option              [69][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   70      POP3 Server Option              [70][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   71      NNTP Server Option              [71][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   72      WWW Server Option               [72][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   73      Default Finger Server Option    [73][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   74      Default IRC Server Option       [74][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   75      StreetTalk Server Option        [75][len(n)][a1][a2][a3][a4][a1][a2][...]
+	   76      STDA Server Option              [76][len(n)][a1][a2][a3][a4][a1][a2][...]
 	   255     End                             [255]
 	*/
 }
@@ -341,16 +353,22 @@ func DnsGenerateDatagram(header DnsHeader, questions []DnsQuestion, resourceReco
 	if header.z != 0 {
 		return nil, fmt.Errorf("invalid header value for z [%d], must be zero", header.z)
 	}
+	var flags byte
 
 	datagram = append(datagram, byte(header.id>>8), byte(header.id))
-	datagram = append(datagram, byte(header.qr&1)<<7)
-	datagram = append(datagram, byte(header.opcode&15)<<3)
-	datagram = append(datagram, byte(header.aa&1)<<2)
-	datagram = append(datagram, byte(header.tc&1)<<1)
-	datagram = append(datagram, byte(header.rd&1))
-	datagram = append(datagram, byte(header.ra&1)<<7)
-	datagram = append(datagram, byte(header.z&7)<<6)
-	datagram = append(datagram, byte(header.rcode&15))
+
+	flags = byte((header.qr & 1) << 7)
+	flags += byte((header.opcode & 15) << 3)
+	flags += byte((header.aa & 1) << 2)
+	flags += byte((header.tc & 1) << 1)
+	flags += byte(header.rd & 1)
+	datagram = append(datagram, flags)
+
+	flags = byte((header.ra & 1) << 7)
+	flags += byte((header.z & 7) << 4)
+	flags += byte(header.rcode & 15)
+	datagram = append(datagram, flags)
+
 	datagram = append(datagram, byte(header.qdcount>>8))
 	datagram = append(datagram, byte(header.qdcount))
 	datagram = append(datagram, byte(header.ancount>>8))
