@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"strconv"
 
 	util "github.com/jgib/utils"
 )
@@ -243,6 +244,19 @@ func main() {
 
 }
 
+func validateIPv4(input string) (uint32, error) {
+	var ipv4 uint32
+
+	regex = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)\.(\d+)$`)
+	if regex.MatchString(input) {
+		tmp, err := strconv.
+	} else {
+		return 0, fmt.Errorf("invalid ipv4 address format [%s]", input)
+	}
+
+	return ipv4, nil
+}
+
 func InetCksum(msg []byte) [2]byte {
 	var tmp uint32
 
@@ -434,6 +448,58 @@ func DnsQuery(datagram []byte, dest string, port uint16, proto string) ([]byte, 
 
 		return replyDatagram[:replySize], nil
 	}
+	if strings.ToUpper(proto) == "TCP" {
+		// do the same for TCP
+	}
 
 	return nil, nil
+}
+
+func DhcpGenerateDatagram(input DhcpDatagram) []byte {
+    var datagram []byte
+
+    datagram = append(datagram, input.op)
+    datagram = append(datagram, input.htype)
+    datagram = append(datagram, input.hlen)
+    datagram = append(datagram, input.hops)
+    datagram = append(datagram, byte(input.xid>>24), byte(input.xid>>16), byte(input.xid>>8), byte(input.xid))
+    datagram = append(datagram, byte(input.flags>>8), byte(input.flags))
+    datagram = append(datagram, byte(input.ciaddr>>24), byte(input.ciaddr>>16), byte(input.ciaddr>>8), byte(input.ciaddr))
+    datagram = append(datagram, byte(input.yiaddr>>24), byte(input.yiaddr>>16), byte(input.yiaddr>>8), byte(input.yiaddr))
+    datagram = append(datagram, byte(input.siaddr>>24), byte(input.siaddr>>16), byte(input.siaddr>>8), byte(input.siaddr))
+    datagram = append(datagram, byte(input.giaddr>>24), byte(input.giaddr>>16), byte(input.giaddr>>8), byte(input.giaddr))
+    for i := 0; i < len(input.chaddr); i++ {
+    	datagram = append(datagram, input.chaddr[i])
+    }
+    for i := 0; i < len(input.sname); i++ {
+    	datagram = append(datagram, input.sname[i])
+    }
+    for i := 0; i < len(input.file); i++ {
+    	datagram = append(datagram, input.file[i])
+    }
+    for i := 0; i < len(input.options); i++ {
+    	datagram = append(datagram, input.file[i])
+    }
+
+    return datagram
+}
+
+func DhcpClient(action string, datagram DhcpDatagram, srcIP string, dstIP string, clientPort uint16, serverPort uint16) (string, error) {
+	if srcIP == "" {
+		srcIP = "0.0.0.0"
+	} else {
+		// check regex
+	}
+	if dstIP == "" {
+		dstIP = "255.255.255.255"
+	} else {
+		// check regex
+	}
+	if clientPort == 0 {
+		clientPort = 68
+	}
+	if serverPort == 0 {
+		serverPort = 67
+	}
+
 }
