@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
-	"strconv"
 
 	util "github.com/jgib/utils"
 )
@@ -177,13 +177,6 @@ type DhcpDatagram struct {
 	*/
 }
 
-type DhcpOption struct {
-	pad        bool    // 0, used to align fields to word boundaries
-	end        byte    // 255
-	subnetMask [6]byte // 1, 4, m1, m2, m3, m4
-	timeOffset [6]byte // 2, 4, n1, n2, n3, n4
-}
-
 func main() {
 	fmt.Println("Test")
 	util.Debug("Test2", true)
@@ -240,16 +233,61 @@ func main() {
 	util.Er(err)
 	fmt.Println(util.WalkByteSlice(tmp5))
 
+	fmt.Println("DHCP:")
+	DhcpClient("new", [6]byte{0x0D, 0xEA, 0xDC, 0x0F, 0xFE, 0xE0}, "", "", 0, 0)
+
 	util.Er(fmt.Errorf("ERROR TEST"))
 
 }
 
-func validateIPv4(input string) (uint32, error) {
+func ValidateIPv4(input string) (uint32, error) {
+	// if valid, returns ipv4 address as uint32, otherwise error
 	var ipv4 uint32
 
-	regex = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)\.(\d+)$`)
-	if regex.MatchString(input) {
-		tmp, err := strconv.
+	regex := regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)\.(\d+)$`)
+	if regex.MatchString(input) && len(regex.FindStringSubmatch(input)) == 5 {
+		// octet 1
+		tmp, err := strconv.ParseUint(regex.FindStringSubmatch(input)[1], 10, 8)
+		if err != nil {
+			return 0, err
+		}
+		if tmp > 255 {
+			return 0, fmt.Errorf("octet 1 out of range [%d]", tmp)
+		}
+		tmp <<= 24
+		ipv4 = uint32(tmp) & 0xFF000000
+
+		// octet 2
+		tmp, err = strconv.ParseUint(regex.FindStringSubmatch(input)[2], 10, 8)
+		if err != nil {
+			return 0, err
+		}
+		if tmp > 255 {
+			return 0, fmt.Errorf("octet 2 out of range [%d]", tmp)
+		}
+		tmp <<= 16
+		ipv4 += uint32(tmp) & 0x00FF0000
+
+		// octet 3
+		tmp, err = strconv.ParseUint(regex.FindStringSubmatch(input)[3], 10, 8)
+		if err != nil {
+			return 0, err
+		}
+		if tmp > 255 {
+			return 0, fmt.Errorf("octet 3 out of range [%d]", tmp)
+		}
+		tmp <<= 8
+		ipv4 += uint32(tmp) & 0x0000FF00
+
+		// octet 4
+		tmp, err = strconv.ParseUint(regex.FindStringSubmatch(input)[4], 10, 8)
+		if err != nil {
+			return 0, err
+		}
+		if tmp > 255 {
+			return 0, fmt.Errorf("octet 4 out of range [%d]", tmp)
+		}
+		ipv4 += uint32(tmp) & 0x000000FF
 	} else {
 		return 0, fmt.Errorf("invalid ipv4 address format [%s]", input)
 	}
@@ -282,9 +320,14 @@ func InetCksum(msg []byte) [2]byte {
 }
 
 func Ping(datagram []byte, dest string, timeout time.Duration) ([]byte, error) {
-	pattern := regexp.MustCompile(`^\d+\.\d+\.\d+\.\d+$`)
-	if !pattern.MatchString(dest) {
-		return nil, fmt.Errorf("invalid destination IPv4 address [%s]", dest)
+	//	pattern := regexp.MustCompile(`^\d+\.\d+\.\d+\.\d+$`)
+	//	if !pattern.MatchString(dest) {
+	//		return nil, fmt.Errorf("invalid destination IPv4 address [%s]", dest)
+	//	}
+
+	_, err := ValidateIPv4(dest)
+	if err != nil {
+		return nil, err
 	}
 
 	conn, err := net.Dial("ip4:1", dest)
@@ -456,44 +499,51 @@ func DnsQuery(datagram []byte, dest string, port uint16, proto string) ([]byte, 
 }
 
 func DhcpGenerateDatagram(input DhcpDatagram) []byte {
-    var datagram []byte
+	var datagram []byte
 
-    datagram = append(datagram, input.op)
-    datagram = append(datagram, input.htype)
-    datagram = append(datagram, input.hlen)
-    datagram = append(datagram, input.hops)
-    datagram = append(datagram, byte(input.xid>>24), byte(input.xid>>16), byte(input.xid>>8), byte(input.xid))
-    datagram = append(datagram, byte(input.flags>>8), byte(input.flags))
-    datagram = append(datagram, byte(input.ciaddr>>24), byte(input.ciaddr>>16), byte(input.ciaddr>>8), byte(input.ciaddr))
-    datagram = append(datagram, byte(input.yiaddr>>24), byte(input.yiaddr>>16), byte(input.yiaddr>>8), byte(input.yiaddr))
-    datagram = append(datagram, byte(input.siaddr>>24), byte(input.siaddr>>16), byte(input.siaddr>>8), byte(input.siaddr))
-    datagram = append(datagram, byte(input.giaddr>>24), byte(input.giaddr>>16), byte(input.giaddr>>8), byte(input.giaddr))
-    for i := 0; i < len(input.chaddr); i++ {
-    	datagram = append(datagram, input.chaddr[i])
-    }
-    for i := 0; i < len(input.sname); i++ {
-    	datagram = append(datagram, input.sname[i])
-    }
-    for i := 0; i < len(input.file); i++ {
-    	datagram = append(datagram, input.file[i])
-    }
-    for i := 0; i < len(input.options); i++ {
-    	datagram = append(datagram, input.file[i])
-    }
+	datagram = append(datagram, input.op)
+	datagram = append(datagram, input.htype)
+	datagram = append(datagram, input.hlen)
+	datagram = append(datagram, input.hops)
+	datagram = append(datagram, byte(input.xid>>24), byte(input.xid>>16), byte(input.xid>>8), byte(input.xid))
+	datagram = append(datagram, byte(input.secs>>8), byte(input.secs))
+	datagram = append(datagram, byte(input.flags>>8), byte(input.flags))
+	datagram = append(datagram, byte(input.ciaddr>>24), byte(input.ciaddr>>16), byte(input.ciaddr>>8), byte(input.ciaddr))
+	datagram = append(datagram, byte(input.yiaddr>>24), byte(input.yiaddr>>16), byte(input.yiaddr>>8), byte(input.yiaddr))
+	datagram = append(datagram, byte(input.siaddr>>24), byte(input.siaddr>>16), byte(input.siaddr>>8), byte(input.siaddr))
+	datagram = append(datagram, byte(input.giaddr>>24), byte(input.giaddr>>16), byte(input.giaddr>>8), byte(input.giaddr))
+	for i := 0; i < len(input.chaddr); i++ {
+		datagram = append(datagram, input.chaddr[i])
+	}
+	for i := 0; i < len(input.sname); i++ {
+		datagram = append(datagram, input.sname[i])
+	}
+	for i := 0; i < len(input.file); i++ {
+		datagram = append(datagram, input.file[i])
+	}
+	for i := 0; i < len(input.options); i++ {
+		datagram = append(datagram, input.options[i])
+	}
 
-    return datagram
+	return datagram
 }
 
-func DhcpClient(action string, datagram DhcpDatagram, srcIP string, dstIP string, clientPort uint16, serverPort uint16) (string, error) {
+func DhcpClient(action string, mac [6]byte, srcIP string, dstIP string, clientPort uint16, serverPort uint16) (string, error) {
 	if srcIP == "" {
 		srcIP = "0.0.0.0"
 	} else {
-		// check regex
+		_, err := ValidateIPv4(srcIP)
+		if err != nil {
+			return "", err
+		}
 	}
 	if dstIP == "" {
 		dstIP = "255.255.255.255"
 	} else {
-		// check regex
+		_, err := ValidateIPv4(dstIP)
+		if err != nil {
+			return "", err
+		}
 	}
 	if clientPort == 0 {
 		clientPort = 68
@@ -502,4 +552,74 @@ func DhcpClient(action string, datagram DhcpDatagram, srcIP string, dstIP string
 		serverPort = 67
 	}
 
+	//var buffSize = 65507
+
+	switch action {
+	case "new":
+		// DHCP DISCOVER
+		var discoverDatagram DhcpDatagram
+		discoverDatagram.op = 1
+		discoverDatagram.htype = 1
+		discoverDatagram.hlen = 6
+		discoverDatagram.hops = 0
+		discoverDatagram.xid = 0x0C0FFEE0
+		discoverDatagram.secs = 0
+		discoverDatagram.flags = 0
+		discoverDatagram.ciaddr = 0
+		discoverDatagram.yiaddr = 0
+		discoverDatagram.siaddr = 0
+		discoverDatagram.giaddr = 0
+		discoverDatagram.chaddr[0] = mac[0]
+		discoverDatagram.chaddr[1] = mac[1]
+		discoverDatagram.chaddr[2] = mac[2]
+		discoverDatagram.chaddr[3] = mac[3]
+		discoverDatagram.chaddr[4] = mac[4]
+		discoverDatagram.chaddr[5] = mac[5]
+		discoverDatagram.options = append(discoverDatagram.options, 99, 130, 83, 99)                                          // magic cookie
+		discoverDatagram.options = append(discoverDatagram.options, 53, 1, 1)                                                 // DHCP DISCOVER
+		discoverDatagram.options = append(discoverDatagram.options, 61, 7, 1, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]) // Client Identifier
+		discoverDatagram.options = append(discoverDatagram.options, 50, 4, 0, 0, 0, 0)                                        // Requested IP Address
+		discoverDatagram.options = append(discoverDatagram.options, 55, 6, 1, 6, 15, 44, 3, 42)                               // Parameter Request List
+		discoverDatagram.options = append(discoverDatagram.options, 255)                                                      // END
+
+		util.Debug("Building DHCP DISCOVER", true)
+
+		datagram := DhcpGenerateDatagram(discoverDatagram)
+		for len(datagram)%16 != 0 {
+			datagram = append(datagram, 0)
+		}
+		util.Debug(fmt.Sprintf("Datagram:\n%s", util.WalkByteSlice(datagram)), true)
+
+		util.Debug("Resolving local address", true)
+		clientAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", srcIP, clientPort))
+		if err != nil {
+			return "", err
+		}
+		util.Debug("Resolving remote address", true)
+		serverAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", dstIP, serverPort))
+		if err != nil {
+			return "", err
+		}
+
+		util.Debug(fmt.Sprintf("Creating socket [%s:%d] <--> [%s:%d]", srcIP, clientPort, dstIP, serverPort), true)
+		conn, err := net.DialUDP("udp", clientAddr, serverAddr)
+		if err != nil {
+			return "", err
+		}
+		defer conn.Close()
+
+		util.Debug("Sending datagram to server", true)
+		nBytes, err := conn.Write(datagram)
+		if err != nil {
+			return "", err
+		}
+		util.Debug(fmt.Sprintf("%d Bytes sent", nBytes), true)
+
+	case "renew":
+	case "release":
+	default:
+		return "", fmt.Errorf("no valid action given [%s]", action)
+	}
+
+	return "test", nil
 }
