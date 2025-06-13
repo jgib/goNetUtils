@@ -234,7 +234,7 @@ func main() {
 	fmt.Println(util.WalkByteSlice(tmp5))
 
 	fmt.Println("DHCP:")
-	DhcpClient("new", [6]byte{0x0D, 0xEA, 0xDC, 0x0F, 0xFE, 0xE0}, "", "", 0, 0)
+	DhcpClient("new", [6]byte{0x0D, 0xEA, 0xDC, 0x0F, 0xFE, 0xE0}, "", "", 0, 0, "10.1.0.215")
 
 	util.Er(fmt.Errorf("ERROR TEST"))
 
@@ -528,7 +528,7 @@ func DhcpGenerateDatagram(input DhcpDatagram) []byte {
 	return datagram
 }
 
-func DhcpClient(action string, mac [6]byte, srcIP string, dstIP string, clientPort uint16, serverPort uint16) (string, error) {
+func DhcpClient(action string, mac [6]byte, srcIP string, dstIP string, clientPort uint16, serverPort uint16, requestedIP string) (string, error) {
 	if srcIP == "" {
 		srcIP = "0.0.0.0"
 	} else {
@@ -545,6 +545,9 @@ func DhcpClient(action string, mac [6]byte, srcIP string, dstIP string, clientPo
 			return "", err
 		}
 	}
+	if requestedIP == "" {
+		requestedIP = "0.0.0.0"
+	}
 	if clientPort == 0 {
 		clientPort = 68
 	}
@@ -552,7 +555,7 @@ func DhcpClient(action string, mac [6]byte, srcIP string, dstIP string, clientPo
 		serverPort = 67
 	}
 
-	//var buffSize = 65507
+	var buffSize = 65507
 
 	switch action {
 	case "new":
@@ -578,9 +581,17 @@ func DhcpClient(action string, mac [6]byte, srcIP string, dstIP string, clientPo
 		discoverDatagram.options = append(discoverDatagram.options, 99, 130, 83, 99)                                          // magic cookie
 		discoverDatagram.options = append(discoverDatagram.options, 53, 1, 1)                                                 // DHCP DISCOVER
 		discoverDatagram.options = append(discoverDatagram.options, 61, 7, 1, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]) // Client Identifier
-		discoverDatagram.options = append(discoverDatagram.options, 50, 4, 0, 0, 0, 0)                                        // Requested IP Address
-		discoverDatagram.options = append(discoverDatagram.options, 55, 6, 1, 6, 15, 44, 3, 42)                               // Parameter Request List
-		discoverDatagram.options = append(discoverDatagram.options, 255)                                                      // END
+		if requestedIP == "0.0.0.0" {
+			discoverDatagram.options = append(discoverDatagram.options, 50, 4, 0, 0, 0, 0) // Requested IP Address
+		} else {
+			rqstIP, err := ValidateIPv4(requestedIP)
+			if err != nil {
+				return "", err
+			}
+			discoverDatagram.options = append(discoverDatagram.options, 50, 4, byte(rqstIP<<24), byte(rqstIP<<16), byte(rqstIP<<8), byte(rqstIP))
+		}
+		discoverDatagram.options = append(discoverDatagram.options, 55, 6, 1, 6, 15, 44, 3, 42) // Parameter Request List
+		discoverDatagram.options = append(discoverDatagram.options, 255)                        // END
 
 		util.Debug("Building DHCP DISCOVER", true)
 
@@ -614,6 +625,205 @@ func DhcpClient(action string, mac [6]byte, srcIP string, dstIP string, clientPo
 			return "", err
 		}
 		util.Debug(fmt.Sprintf("%d Bytes sent", nBytes), true)
+
+		buf := make([]byte, buffSize)
+
+		for {
+			n, rmtAddr, err := conn.ReadFromUDP(buf)
+			if err != nil {
+				return "", err
+			}
+			util.Debug(fmt.Sprintf("Received %d bytes from %s", n, rmtAddr), true)
+			util.Debug(fmt.Sprintf("Datagram:\n%s", util.WalkByteSlice(buf[:n])), true)
+
+			var replyDatagram DhcpDatagram
+			if len(buf[:n]) < 237 {
+				return "", fmt.Errorf("malformed datagram, length too short [%d]", len(buf[:n]))
+			}
+			replyDatagram.op = buf[1]
+			replyDatagram.htype = buf[2]
+			replyDatagram.hlen = buf[3]
+			replyDatagram.hops = buf[4]
+			replyDatagram.xid = (uint32(buf[5]) << 24) + (uint32(buf[6]) << 16) + (uint32(buf[7]) << 8) + uint32(buf[8])
+			replyDatagram.secs = (uint16(buf[9]) << 8) + uint16(buf[10])
+			replyDatagram.flags = (uint16(buf[11]) << 8) + uint16(buf[12])
+			replyDatagram.ciaddr = (uint32(buf[13]) << 24) + (uint32(buf[14]) << 16) + (uint32(buf[15]) << 8) + uint32(buf[16])
+			replyDatagram.yiaddr = (uint32(buf[17]) << 24) + (uint32(buf[18]) << 16) + (uint32(buf[19]) << 8) + uint32(buf[20])
+			replyDatagram.siaddr = (uint32(buf[21]) << 24) + (uint32(buf[22]) << 16) + (uint32(buf[23]) << 8) + uint32(buf[24])
+			replyDatagram.giaddr = (uint32(buf[25]) << 24) + (uint32(buf[26]) << 16) + (uint32(buf[27]) << 8) + uint32(buf[28])
+			for i := 0; i < 16; i++ {
+				replyDatagram.chaddr[i] = buf[29+i]
+			}
+			for i := 0; i < 64; i++ {
+				replyDatagram.sname[i] = buf[45+i]
+			}
+			for i := 0; i < 128; i++ {
+				replyDatagram.file[i] = buf[109+i]
+			}
+			for i := 0; i < len(buf[237:n]); i++ {
+				replyDatagram.options = append(replyDatagram.options, buf[i])
+			}
+
+			if replyDatagram.op != 2 {
+				util.Debug("Datagram [OP] is not BOOT REPLY, ignoring", true)
+				continue
+			}
+			if replyDatagram.htype != 1 {
+				util.Debug("Datagram [HTYPE] is not Ethernet, ignoring", true)
+				continue
+			}
+			if replyDatagram.hlen != 6 {
+				util.Debug("Datagram [HLEN] is not 6, ignoring", true)
+				continue
+			}
+			if replyDatagram.xid != discoverDatagram.xid {
+				util.Debug("Datagram [XID] dosen't match, ignoring", true)
+				continue
+			}
+			// parse options
+			for i := 237; i < len(buf[:n]); i++ {
+				switch buf[i] {
+				case 0:
+					continue
+				case 255:
+					break
+				case 53:
+					if i+2 < len(buf[:n]) {
+						if buf[i+1] != 1 {
+							util.Debug("Malformed DHCP message type", true)
+							break
+						}
+						if buf[i+2] > 7 {
+							util.Debug("Malformed DHCP message type", true)
+							break
+						}
+						switch buf[i+2] {
+						case 1:
+							util.Debug("DHCP Message Type: DISCOVER, ignoring", true)
+							continue
+						case 2:
+							util.Debug("DHCP Message Type: OFFER received", true)
+
+							var subnetMask uint32
+							var routers []uint32
+							var dns []uint32
+							var domainName []uint32
+							var ntp []uint32
+
+							for i := 0; i < len(buf[:n]); i++ {
+								switch buf[i] {
+								case 1: // Subnet Mask
+									if i+6 < len(buf[:n]) {
+										if buf[i+1] != 4 || buf[i+2] > 255 || buf[i+3] > 255 || buf[i+4] > 255 || buf[i+5] > 255 {
+											util.Debug("Malformed DHCP Option, Subnet Mask, ignoring", true)
+											break
+										}
+										subnetMask = (uint32(buf[i+2]) << 24) + (uint32(buf[i+3]) << 16) + (uint32(buf[i+4]) << 8) + uint32(buf[i+5])
+										i += 5
+										continue
+									} else {
+										util.Debug("Malformed DHCP Option, Subnet Mask, ignoring", true)
+										break
+									}
+								case 3: // Router
+									if i+6 < len(buf[:n]) {
+										for j := i + 2; j < int(buf[i+1]); j += 4 {
+											if j+3 < len(buf[:n]) {
+												tmpRouter := (uint32(buf[j]) << 24) + (uint32(buf[j+1]) << 16) + (uint32(buf[j+2]) << 8) + uint32(buf[j+3])
+												routers = append(routers, tmpRouter)
+											} else {
+												util.Debug("Malformed DHCP Option, Router, ignoring", true)
+												break
+											}
+										}
+										i += int(buf[i+1])
+										continue
+									} else {
+										util.Debug("Malformed DHCP Option, Router, ignoring", true)
+										break
+									}
+								case 6: // DNS Servers
+									if i+6 < len(buf[:n]) {
+										for j := i + 2; j < int(buf[i+1]); j += 4 {
+											if j+3 < len(buf[:n]) {
+												tmpDns := (uint32(buf[j]) << 24) + (uint32(buf[j+1]) << 16) + (uint32(buf[j+2]) << 8) + uint32(buf[j+3])
+												dns = append(dns, tmpDns)
+											} else {
+												util.Debug("Malformed DHCP Option, DNS, ignoring", true)
+												break
+											}
+										}
+										i += int(buf[i+1])
+										continue
+									} else {
+										util.Debug("Malformed DHCP Option, DNS, ignoring", true)
+										break
+									}
+								case 15: // Domain Name
+									if i+6 < len(buf[:n]) {
+										for j := i + 2; j < int(buf[i+1]); j += 4 {
+											if j+3 < len(buf[:n]) {
+												tmpDomainName := (uint32(buf[j]) << 24) + (uint32(buf[j+1]) << 16) + (uint32(buf[j+2]) << 8) + uint32(buf[j+3])
+												domainName = append(domainName, tmpDomainName)
+											} else {
+												util.Debug("Malformed DHCP Option, Domain Name, ignoring", true)
+												break
+											}
+										}
+										i += int(buf[i+1])
+										continue
+									} else {
+										util.Debug("Malformed DHCP Option, Domain Name, ignoring", true)
+										break
+									}
+								case 42: // NTP
+									if i+6 < len(buf[:n]) {
+										for j := i + 2; j < int(buf[i+1]); j += 4 {
+											if j+3 < len(buf[:n]) {
+												tmpNtp := (uint32(buf[j]) << 24) + (uint32(buf[j+1]) << 16) + (uint32(buf[j+2]) << 8) + uint32(buf[j+3])
+												ntp = append(ntp, tmpNtp)
+											} else {
+												util.Debug("Malformed DHCP Option, NTP, ignoring", true)
+												break
+											}
+										}
+										i += int(buf[i+1])
+										continue
+									} else {
+										util.Debug("Malformed DHCP Option, NTP, ignoring", true)
+										break
+									}
+								case 44:
+								case 50:
+								case 55:
+								case 61:
+								default:
+									util.Debug(fmt.Sprintf("Ignoring DHCP Option: [%d]", buf[i]), true)
+								}
+							}
+						case 3:
+							util.Debug("DHCP Message Type: REQUEST, ignoring", true)
+							continue
+						case 4:
+							util.Debug("DHCP Message Type: DECLINE, ignoring", true)
+							continue
+						case 5:
+							util.Debug("DHCP Message Type: ACK, ignoring", true)
+							continue
+						case 6:
+							util.Debug("DHCP Message Type: NAK, trying new address", true)
+							return DhcpClient(action, mac, srcIP, dstIP, clientPort, serverPort, "")
+						case 7:
+							util.Debug("DHCP Message Type: RELEASE, ignoring", true)
+							continue
+						}
+					} else {
+						util.Debug("Malformed DHCP message type", true)
+						break
+					}
+				}
+			}
+		}
 
 	case "renew":
 	case "release":
